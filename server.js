@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const encryptionType = 'aes-256-cbc';
 const encryptionEncoding = 'base64';
 const bufferEncryption = 'utf-8';
+const bodyParser = require('body-parser');
 require('dotenv').config();
 
 //const encryptionKey = crypto.randomBytes(32).toString('hex'); 
@@ -53,7 +54,7 @@ db.serialize(() => {
 });
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 app.set('trust proxy', true)
 const port = 8080;
@@ -110,8 +111,7 @@ function generateToken() {
 
   //encrypt the private key
   var encryptedPrivateKey = encryptPrivateKey(keyPair.toPEM(true))
-  console.log(keyPair.toPEM(true) + '\n')
-  //console.log(decryptPrivateKey(encryptedPrivateKey) + '\n')
+
   //store key in db
   db.run('INSERT INTO keys(key, exp) VALUES(?,?)',[encryptedPrivateKey, payload.exp], error => {
     if (error) throw error;
@@ -124,7 +124,7 @@ function generateToken() {
     if(error) throw error;
     //decrypt the private key
     decryptedPrivateKey = decryptPrivateKey(row[0].key)
-    console.log(decryptedPrivateKey)
+
     token = jwt.sign(payload, decryptedPrivateKey, options);
   })
   
@@ -146,8 +146,11 @@ function generateExpiredJWT() {
     }
   };
 
+  //encrypt the private key
+  var encryptedPrivateKey = encryptPrivateKey(expiredKeyPair.toPEM(true))
+
   //store key in db
-  db.run('INSERT INTO keys(key, exp) VALUES(?,?)',[expiredKeyPair.toPEM(true), payload.exp], error => {
+  db.run('INSERT INTO keys(key, exp) VALUES(?,?)',[encryptedPrivateKey, payload.exp], error => {
     if (error) throw error;
     console.log('Expired key stored in db')
   })
@@ -156,7 +159,10 @@ function generateExpiredJWT() {
   let now = Math.floor(Date.now() / 1000)
   db.all('SELECT key FROM keys WHERE exp <= ?', [now], (error, row) => {
     if(error) throw error;
-    expiredToken = jwt.sign(payload, row[0].key, options);
+    //decrypt the private key
+    decryptedPrivateKey = decryptPrivateKey(row[0].key)
+
+    expiredToken = jwt.sign(payload, decryptedPrivateKey, options);
   })
   return expiredToken;
 }
