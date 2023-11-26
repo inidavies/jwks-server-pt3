@@ -5,12 +5,16 @@ const sqlite3 = require('sqlite3').verbose();
 const argon2 = require('argon2');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const encryptionType = 'aes-256-cbc';
+const encryptionEncoding = 'base64';
+const bufferEncryption = 'utf-8';
 require('dotenv').config();
 
 //const encryptionKey = crypto.randomBytes(32).toString('hex'); 
 
 // Retrieve the encryption key from environment variable
 const encryptionKey = process.env.NOT_MY_KEY;
+const aesIV = 'ABCDEFGHIJKLMNOP'
 
 if (!encryptionKey) {
   console.error('FATAL ERROR: encryption key is not defined.');
@@ -61,17 +65,23 @@ let expiredToken;
 
 // Function to encrypt a private key using AES
 const encryptPrivateKey = (privateKey) => {
-  const cipher = crypto.createCipheriv('aes-256-ctr', Buffer.from(encryptionKey, 'hex'), crypto.randomBytes(16));
-  let encrypted = cipher.update(privateKey, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return encrypted.toString('base64') ;
+  const key = Buffer.from(encryptionKey, bufferEncryption);
+  const iv = Buffer.from(aesIV, bufferEncryption);
+  
+  const cipher = crypto.createCipheriv(encryptionType, key, iv);
+  let encrypted = cipher.update(privateKey, bufferEncryption, encryptionEncoding);
+  encrypted += cipher.final(encryptionEncoding);
+  return encrypted;
 };
 
 // Function to decrypt an encrypted private key using AES
 const decryptPrivateKey = (encryptedPrivateKey) => {
-  const buff = Buffer.from(encryptedPrivateKey, 'base64');
-  const decipher = crypto.createDecipheriv('aes-256-ctr', Buffer.from(encryptionKey, 'hex'), crypto.randomBytes(16));
-  let decrypted = decipher.update(buff, 'hex', 'utf8') + decipher.final('utf8')
+  const buff = Buffer.from(encryptedPrivateKey, encryptionEncoding);
+  const key = Buffer.from(encryptionKey, bufferEncryption);
+  const iv = Buffer.from(aesIV, bufferEncryption);
+
+  const decipher = crypto.createDecipheriv(encryptionType, key, iv);
+  let decrypted = decipher.update(buff).toString() + decipher.final().toString()
   return decrypted;
 };
 
@@ -101,7 +111,7 @@ function generateToken() {
   //encrypt the private key
   var encryptedPrivateKey = encryptPrivateKey(keyPair.toPEM(true))
   console.log(keyPair.toPEM(true) + '\n')
-  console.log(decryptPrivateKey(encryptedPrivateKey))
+  //console.log(decryptPrivateKey(encryptedPrivateKey) + '\n')
   //store key in db
   db.run('INSERT INTO keys(key, exp) VALUES(?,?)',[encryptedPrivateKey, payload.exp], error => {
     if (error) throw error;
@@ -113,9 +123,9 @@ function generateToken() {
   db.all('SELECT key FROM keys WHERE exp > ?', [now], (error, row) => {
     if(error) throw error;
     //decrypt the private key
-    //console.log(row[0].key)
-    //decryptedPrivateKey = decryptPrivateKey(row[0].key)
-    token = jwt.sign(payload, row[0].key, options);
+    decryptedPrivateKey = decryptPrivateKey(row[0].key)
+    console.log(decryptedPrivateKey)
+    token = jwt.sign(payload, decryptedPrivateKey, options);
   })
   
   return token;
@@ -192,7 +202,8 @@ app.get('/.well-known/jwks.json', (req, res) => {
   let now = Math.floor(Date.now() / 1000)
   db.all('SELECT * FROM keys WHERE exp > ?', [now], (error, row) => {
     if(error) throw error;
-    if (row[0].key === keyPair.toPEM(true)){
+    decryptedPrivateKey = decryptPrivateKey(row[0].key)
+    if (decryptedPrivateKey === keyPair.toPEM(true)){
       const validKeys = [keyPair].filter(key => !key.expired);
       res.setHeader('Content-Type', 'application/json');
       res.json({ keys: validKeys.map(key => key) });
