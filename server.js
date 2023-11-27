@@ -11,7 +11,9 @@ const bufferEncryption = 'utf-8';
 const bodyParser = require('body-parser');
 require('dotenv').config();
 
-//const encryptionKey = crypto.randomBytes(32).toString('hex'); 
+// Using Node.js `require()`
+const {generateUsername} = require("unique-username-generator");
+let someUsernameInDB;
 
 // Retrieve the encryption key from environment variable
 const encryptionKey = process.env.NOT_MY_KEY;
@@ -33,8 +35,6 @@ db.serialize(() => {
           key BLOB NOT NULL,
           exp INTEGER NOT NULL)`)
 
-  db.run('DROP TABLE IF EXISTS users')
-
   db.run(`CREATE TABLE IF NOT EXISTS users(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           username TEXT NOT NULL UNIQUE,
@@ -42,8 +42,6 @@ db.serialize(() => {
           email TEXT UNIQUE,
           date_registered TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           last_login TIMESTAMP )`)
-  
-  db.run('DROP TABLE IF EXISTS auth_logs')
 
   db.run(`CREATE TABLE IF NOT EXISTS auth_logs(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +52,7 @@ db.serialize(() => {
 });
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.set('trust proxy', true)
 const port = 8080;
@@ -218,25 +216,30 @@ app.get('/.well-known/jwks.json', (req, res) => {
 });
 
 app.post('/auth', (req, res) => {
+  
+  const request_ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  let username = req.body.username;
+  if (username === undefined) {
+    username = someUsernameInDB;
+  }
+  let user_id = 0;
+  //const ip_addr = req.ip;
+  const request_timestamp = Math.floor(Date.now() / 1000);
+  db.all('SELECT id FROM users WHERE username = ?', [username], (error, row) => {
+    if(error) throw error;
+    user_id = row[0].id;
+  })
+
+  db.run('INSERT INTO auth_logs(request_ip, request_timestamp, user_id) VALUES(?,?,?)',
+  [request_ip, request_timestamp, user_id], error => {
+     if (error) throw error;
+     console.log('New request log added to the db')
+  });
 
   if (req.query.expired === 'true'){
-
-    const request_ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const username = req.body.username;
-    //const ip_addr = req.ip;
-    const request_timestamp = Math.floor(Date.now() / 1000);
-    db.run('SELECT id FROM users WHERE username = ?', [username], (error, row) => {
-      if(error) throw error;
-      user_id = row[0].id;
-    })
-
-    db.run('INSERT INTO auth_logs(request_ip, request_timestamp, user_id) VALUES(?,?,?)',
-    [request_ip, timestamp, user_id], error => {
-       if (error) throw error;
-       console.log('New request log added to the db')
-    });
     return res.send(expiredToken);
   }
+  
   res.send(token);
 });
 
@@ -249,9 +252,15 @@ app.all('/register', (req, res, next) => {
 });
 
 app.post('/register', (req, res) => {
-  const {username, email} = req.body;
-  if (!username || !email) {
-    return res.status(400).json({error:'Bad Request'});
+  let username = "";
+  let email = "";
+  try {
+    username = JSON.parse(req.body.username);
+    email = JSON.parse(req.body.email);
+  } catch(err){
+    username = generateUsername();
+    email = username+"@gmail.com";
+    someUsernameInDB = username;
   }
 
   //Generate a secure password and hash it
@@ -261,10 +270,10 @@ app.post('/register', (req, res) => {
   //Add user credentials to the users databse
   
   //const date_registered = Math.floor(Date.now() / 1000);
-  //const last_login = Math.floor(Date.now() / 1000);
+  const last_login = Math.floor(Date.now() / 1000);
 
-  db.run('INSERT INTO users(username, password_hash, email, date_registered, last_login) VALUES(?,?,?)',
-         [username, hashedPassword, email], error => {
+  db.run('INSERT INTO users(username, password_hash, email, last_login) VALUES(?,?,?,?)',
+         [username, hashedPassword, email, last_login], error => {
             if (error) throw error;
             console.log('New user added to the db')
   })

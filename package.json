@@ -21,6 +21,7 @@
     "node-jose": "^2.2.0",
     "nyc": "^15.1.0",
     "sqlite3": "^5.1.6",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "unique-username-generator": "^1.2.0"
   }
 }
