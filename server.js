@@ -225,17 +225,18 @@ app.post('/auth', rateLimiter, (req, res) => {
     username = someUsernameInDB;
   }
   let user_id = 0;
-  const request_timestamp = Math.floor(Date.now() / 1000);
+
   db.all('SELECT id FROM users WHERE username = ?', [username], (error, row) => {
     if(error) throw error;
     user_id = row[0].id;
+
+    db.run('INSERT INTO auth_logs(request_ip, user_id) VALUES(?,?)',
+    [request_ip, user_id], error => {
+       if (error) throw error;
+       console.log('New request log added to the db')
+    });
   })
 
-  db.run('INSERT INTO auth_logs(request_ip, request_timestamp, user_id) VALUES(?,?,?)',
-  [request_ip, request_timestamp, user_id], error => {
-     if (error) throw error;
-     console.log('New request log added to the db')
-  });
 
   if (req.query.expired === 'true'){
     return res.send(expiredToken);
