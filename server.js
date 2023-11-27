@@ -10,8 +10,8 @@ const encryptionEncoding = 'base64';
 const bufferEncryption = 'utf-8';
 const bodyParser = require('body-parser');
 require('dotenv').config();
-const TokenBucket = require('./tokenBucket.js');
-
+//const TokenBucket = require('./tokenBucket.js');
+const rateLimiter = require('./rateLimiter.js');
 // Using Node.js `require()`
 const {generateUsername} = require("unique-username-generator");
 let someUsernameInDB;
@@ -217,7 +217,7 @@ app.get('/.well-known/jwks.json', (req, res) => {
   })
 });
 
-app.post('/auth', TokenBucket, (req, res) => {
+app.post('/auth', rateLimiter, (req, res) => {
   
   const request_ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   let username = req.body.username;
