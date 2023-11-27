@@ -24,6 +24,7 @@ if (!encryptionKey) {
   process.exit(1);
 }
 
+//try putting each table in a separate db
 let db = new sqlite3.Database('./totally_not_my_privateKeys.db')
 
 // Create users table if it doesn't exist
@@ -223,7 +224,6 @@ app.post('/auth', (req, res) => {
     username = someUsernameInDB;
   }
   let user_id = 0;
-  //const ip_addr = req.ip;
   const request_timestamp = Math.floor(Date.now() / 1000);
   db.all('SELECT id FROM users WHERE username = ?', [username], (error, row) => {
     if(error) throw error;
