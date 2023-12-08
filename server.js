@@ -291,4 +291,4 @@ generateKeyPairs().then(() => {
     console.log(`Server started on http://localhost:${port}`);
   });
 });
-module.exports = {app, generateKeyPairs, generateToken, generateExpiredJWT};
+module.exports = {app, generateKeyPairs, generateToken, generateExpiredJWT, encryptPrivateKey, decryptPrivateKey, generateSecurePassword, hashSecurePassword};
